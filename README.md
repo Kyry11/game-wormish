@@ -14,6 +14,7 @@ The game is orchestrated by an imperative loop with lightweight classes for doma
 - Gameplay objects live under [src/entities/](src/entities/), covering terrain, worms, projectiles, and particles.
 - Rendering helpers in [src/rendering/](src/rendering/) take a canvas context and draw HUD, terrain, and UI overlays.
 - User input is handled by [Input](src/utils.ts) and UI overlays under [src/ui/](src/ui/).
+- Toggle **Fun Mode** with `F` to speed up worms, cycle the sky palette, and shower the map in celebratory confetti.
 
 ## Development
 Prerequisites: Node.js LTS.

@@ -28,6 +28,11 @@ import {
   resolveCharge01,
   shouldPredictPath,
 } from "./game/weapon-system";
+import {
+  FunModeController,
+  createConfettiBurst,
+  createConfettiTrail,
+} from "./game/fun-mode";
 
  // phase type managed by GameState
 
@@ -74,6 +79,9 @@ export class Game {
   private readonly pointerDownFocusHandler = () => this.canvas.focus();
   private readonly mouseDownFocusHandler = () => this.canvas.focus();
   private readonly touchStartFocusHandler = () => this.canvas.focus();
+
+  private readonly funMode = new FunModeController();
+  private funModeAnnouncement: { text: string; expiresAt: number } | null = null;
 
   constructor(width: number, height: number) {
     this.width = width;
@@ -166,7 +174,8 @@ export class Game {
 
   nextTurn(initial = false) {
     // Set wind each turn
-    this.wind = randRange(-WORLD.windMax, WORLD.windMax);
+    const windRange = this.funMode.isActive() ? WORLD.windMax * 1.5 : WORLD.windMax;
+    this.wind = randRange(-windRange, windRange);
     this.state.startTurn(nowMs(), WeaponType.Bazooka);
     this.message = initial ? "Welcome! Eliminate the other team!" : null;
     // Ensure cursor matches the newly selected weapon
@@ -195,6 +204,10 @@ export class Game {
     if (this.input.pressed("F1")) {
       if (this.helpOverlay.isVisible()) this.hideHelp();
       else this.showHelp();
+    }
+
+    if (this.keyAny(["KeyF"])) {
+      this.toggleFunMode();
     }
 
     if (this.helpOverlay.isVisible()) {
@@ -239,7 +252,7 @@ export class Game {
       if (this.keyDownAny(["ArrowLeft", "KeyA"])) move -= 1;
       if (this.keyDownAny(["ArrowRight", "KeyD"])) move += 1;
       const jump = this.keyPressedAny(["Space"]);
-      a.update(dt, this.terrain, move, jump);
+      a.update(dt, this.terrain, move, jump, this.funMode.getMovementModifiers());
 
       // Aim face direction based on target X
       const aim = this.getAimInfo();
@@ -367,6 +380,9 @@ export class Game {
   update(dt: number) {
     this.handleInput(dt);
 
+    const now = nowMs();
+    this.updateFunMode(now);
+
     if (this.helpOverlay.isVisible()) {
       this.updateCameraShake(dt);
       return;
@@ -444,7 +460,7 @@ export class Game {
           if (!w.alive) continue;
           const move = 0;
           const jump = false;
-          w.update(dt, this.terrain, move, jump);
+          w.update(dt, this.terrain, move, jump, this.funMode.getMovementModifiers());
         }
       }
     }
@@ -537,6 +553,52 @@ export class Game {
     this.canvas.style.cursor = this.state.weapon === WeaponType.Rifle ? "none" : "crosshair";
   }
 
+  private toggleFunMode() {
+    const now = nowMs();
+    const enabled = this.funMode.toggle(now);
+    if (enabled) {
+      this.showFunModeMessage("Fun Mode engaged! Expect faster worms and confetti.");
+      this.teamManager.forEachAliveWorm((worm) => {
+        const burst = createConfettiBurst(worm.x, worm.y - worm.radius - 6, 28, {
+          speedMin: 120,
+          speedMax: 280,
+          gravityScale: 0.04,
+        });
+        this.particles.push(...burst);
+      });
+    } else {
+      this.showFunModeMessage("Fun Mode disengaged. Back to regulation maneuvers.");
+    }
+    this.funMode.resetAmbient(now);
+  }
+
+  private showFunModeMessage(text: string) {
+    const expiresAt = nowMs() + 4000;
+    this.funModeAnnouncement = { text, expiresAt };
+    this.message = text;
+  }
+
+  private updateFunMode(now: number) {
+    const announcement = this.funModeAnnouncement;
+    if (announcement && now > announcement.expiresAt) {
+      if (this.message === announcement.text) {
+        this.message = null;
+      }
+      this.funModeAnnouncement = null;
+    }
+
+    if (!this.funMode.isActive()) return;
+    if (this.state.phase === "gameover") return;
+
+    if (this.funMode.shouldEmitAmbient(now, 260)) {
+      const worm = this.activeWorm;
+      if (worm.alive) {
+        const trail = createConfettiTrail(worm);
+        this.particles.push(...trail);
+      }
+    }
+  }
+
   keyAny(codes: string[]) {
     return codes.some((c) => this.input.pressed(c));
   }
@@ -575,7 +637,14 @@ export class Game {
     const ctx = this.ctx;
     ctx.save();
     ctx.translate(this.cameraOffsetX, this.cameraOffsetY);
-    renderBackground(ctx, this.width, this.height, this.cameraPadding);
+    const now = nowMs();
+    renderBackground(
+      ctx,
+      this.width,
+      this.height,
+      this.cameraPadding,
+      this.funMode.getBackgroundPalette(now)
+    );
     this.terrain.render(ctx);
 
     for (const p of this.particles) p.render(ctx);
@@ -607,12 +676,14 @@ export class Game {
       width: this.width,
       height: this.height,
       state: this.state,
-      now: nowMs(),
+      now,
       activeTeamId: this.activeTeam.id,
       getTeamHealth: (teamId) => this.getTeamHealth(teamId),
       wind: this.wind,
       message: this.message,
       turnDurationMs: GAMEPLAY.turnTimeMs,
+      funModeActive: this.funMode.isActive(),
+      funModeLabel: this.funMode.getHudLabel(now),
     });
 
     renderGameOver({

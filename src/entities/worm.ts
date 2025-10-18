@@ -3,6 +3,12 @@ import type { TeamId } from "../definitions";
 import { drawHealthBar } from "../utils";
 import type { Terrain } from "./terrain";
 
+export type WormUpdateModifiers = {
+  walkSpeedMultiplier?: number;
+  jumpSpeedMultiplier?: number;
+  gravityScale?: number;
+};
+
 export class Worm {
   x: number;
   y: number;
@@ -42,12 +48,21 @@ export class Worm {
     if (this.health <= 0) this.alive = false;
   }
 
-  update(dt: number, terrain: Terrain, moveX: number, jump: boolean) {
+  update(
+    dt: number,
+    terrain: Terrain,
+    moveX: number,
+    jump: boolean,
+    modifiers?: WormUpdateModifiers
+  ) {
     if (!this.alive) return;
     this.age += dt;
+    const walkSpeed = WORLD.walkSpeed * (modifiers?.walkSpeedMultiplier ?? 1);
+    const jumpSpeed = WORLD.jumpSpeed * (modifiers?.jumpSpeedMultiplier ?? 1);
+    const gravity = WORLD.gravity * (modifiers?.gravityScale ?? 1);
     // Horizontal input
-    const targetVx = moveX * WORLD.walkSpeed;
-    const accel = 800;
+    const targetVx = moveX * walkSpeed;
+    const accel = 800 * (modifiers?.walkSpeedMultiplier ?? 1);
     if (Math.abs(targetVx - this.vx) < 5) {
       this.vx = targetVx;
     } else {
@@ -66,7 +81,7 @@ export class Worm {
 
     // Jump
     if (prevOnGround && jump) {
-      this.vy = -WORLD.jumpSpeed;
+      this.vy = -jumpSpeed;
       grounded = false;
       latchPrev = false; // jumping clears the previous support latch for this frame
     }
@@ -107,7 +122,7 @@ export class Worm {
           if (!supported) grounded = false;
         }
         if (!grounded) {
-          this.vy += WORLD.gravity * dt;
+          this.vy += gravity * dt;
         } else {
           this.vy = 0;
         }

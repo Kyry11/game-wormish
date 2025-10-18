@@ -17,23 +17,36 @@ export type AimInfo = {
   angle: number;
 };
 
+export type BackgroundPalette = {
+  skyTop: string;
+  skyBottom: string;
+  water: string;
+};
+
 export function renderBackground(
   ctx: CanvasRenderingContext2D,
   width: number,
   height: number,
-  padding = 0
+  padding = 0,
+  palette?: BackgroundPalette
 ) {
+  const colors =
+    palette ?? ({
+      skyTop: COLORS.bgSkyTop,
+      skyBottom: COLORS.bgSkyBottom,
+      water: COLORS.water,
+    } as const);
   const left = -padding;
   const top = -padding;
   const drawWidth = width + padding * 2;
   const drawHeight = height + padding * 2;
   const g = ctx.createLinearGradient(0, top, 0, top + drawHeight);
-  g.addColorStop(0, COLORS.bgSkyTop);
-  g.addColorStop(1, COLORS.bgSkyBottom);
+  g.addColorStop(0, colors.skyTop);
+  g.addColorStop(1, colors.skyBottom);
   ctx.fillStyle = g;
   ctx.fillRect(left, top, drawWidth, drawHeight);
 
-  ctx.fillStyle = COLORS.water;
+  ctx.fillStyle = colors.water;
   const waterH = 30;
   ctx.fillRect(left, height - waterH, drawWidth, waterH + padding);
 }
@@ -49,6 +62,8 @@ export type RenderHudOptions = {
   wind: number;
   message: string | null;
   turnDurationMs: number;
+  funModeActive: boolean;
+  funModeLabel: string;
 };
 
 export function renderHUD({
@@ -62,6 +77,8 @@ export function renderHUD({
   wind,
   message,
   turnDurationMs,
+  funModeActive,
+  funModeLabel,
 }: RenderHudOptions) {
   const padding = 10;
 
@@ -108,6 +125,16 @@ export function renderHUD({
   );
 
   drawText(ctx, "F1: Help", padding + 12, topY + 30, COLORS.white, 12);
+  const funLabelColor = funModeActive ? COLORS.power : COLORS.white;
+  drawText(
+    ctx,
+    funModeLabel,
+    width - padding - 12,
+    topY + 30,
+    funLabelColor,
+    12,
+    "right"
+  );
 
   const timeLeftMs = state.timeLeftMs(now, turnDurationMs);
   const timeLeft = Math.max(0, Math.ceil(timeLeftMs / 1000));
