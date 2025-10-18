@@ -113,6 +113,10 @@ export class HelpOverlay {
         text: "1 - Bazooka, 2 - Grenade, 3 - Rifle; Choose your chaos.",
       },
       {
+        title: "Fun Mode",
+        text: "Press F to toggle silly physics, confetti, and party vibes.",
+      },
+      {
         title: "Wind Watch",
         text: "Mind the gusts before you light the fuse!",
       },
