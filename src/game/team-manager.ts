@@ -12,6 +12,7 @@ export class TeamManager {
 
   private currentTeamIndex = 0;
   private currentWormIndex = 0;
+  private readonly wormRotation = new Map<TeamId, number>();
 
   constructor(
     private readonly width: number,
@@ -26,18 +27,33 @@ export class TeamManager {
     ];
     this.currentTeamIndex = 0;
     this.currentWormIndex = 0;
+    this.wormRotation.clear();
     this.spawnTeams(terrain);
+    for (const team of this.teams) {
+      this.setRotationForTeam(team, 0);
+    }
     this.ensureActiveWorm();
   }
 
   setCurrentTeamIndex(index: number) {
     if (this.teams.length === 0) return;
-    this.currentTeamIndex = ((index % this.teams.length) + this.teams.length) % this.teams.length;
+    const normalized = ((index % this.teams.length) + this.teams.length) % this.teams.length;
+    const nextAlive = this.findNextAliveTeamIndex(normalized);
+    this.currentTeamIndex = nextAlive ?? normalized;
+    this.currentWormIndex = this.getRotationForTeam(this.activeTeam);
     this.ensureActiveWorm();
   }
 
   resetActiveWormIndex() {
-    this.currentWormIndex = 0;
+    if (this.teams.length === 0) return;
+    for (const team of this.teams) {
+      this.setRotationForTeam(team, 0);
+    }
+    const firstAlive = this.findNextAliveTeamIndex(0);
+    if (firstAlive != null) {
+      this.currentTeamIndex = firstAlive;
+    }
+    this.currentWormIndex = this.getRotationForTeam(this.activeTeam);
     this.ensureActiveWorm();
   }
 
@@ -51,10 +67,21 @@ export class TeamManager {
 
   advanceToNextTeam() {
     if (this.teams.length === 0) return;
-    this.currentTeamIndex = (this.currentTeamIndex + 1) % this.teams.length;
-    const team = this.activeTeam;
-    if (team.worms.length === 0) return;
-    this.currentWormIndex = (this.currentWormIndex + 1) % team.worms.length;
+    const previousTeamIndex = this.currentTeamIndex;
+    const currentTeam = this.teams[previousTeamIndex]!;
+    this.advanceRotationForTeam(currentTeam);
+
+    const nextTeamIndex = this.findNextAliveTeamIndex(previousTeamIndex + 1);
+    if (nextTeamIndex != null) {
+      this.currentTeamIndex = nextTeamIndex;
+      this.currentWormIndex = this.getRotationForTeam(this.activeTeam);
+      this.ensureActiveWorm();
+      return;
+    }
+
+    // No other living teams remain; keep focus on the current team.
+    this.currentTeamIndex = previousTeamIndex;
+    this.currentWormIndex = this.getRotationForTeam(currentTeam);
     this.ensureActiveWorm();
   }
 
@@ -115,16 +142,68 @@ export class TeamManager {
     if (team.worms.length === 0) {
       throw new Error("Team has no worms");
     }
-    let idx = this.currentWormIndex % team.worms.length;
+    let idx = this.getRotationForTeam(team) % team.worms.length;
     for (let i = 0; i < team.worms.length; i++) {
       const worm = team.worms[(idx + i) % team.worms.length]!;
       if (worm.alive) {
-        this.currentWormIndex = (idx + i) % team.worms.length;
+        const resolvedIndex = (idx + i) % team.worms.length;
+        this.currentWormIndex = resolvedIndex;
+        this.setRotationForTeam(team, resolvedIndex);
         return worm;
       }
     }
     // If none alive, return first worm for stability
+    this.currentWormIndex = 0;
+    this.setRotationForTeam(team, 0);
     return team.worms[0]!;
+  }
+
+  private getRotationForTeam(team: Team): number {
+    const stored = this.wormRotation.get(team.id);
+    if (stored == null) {
+      this.wormRotation.set(team.id, 0);
+      return 0;
+    }
+    return stored;
+  }
+
+  private setRotationForTeam(team: Team, index: number) {
+    if (team.worms.length === 0) {
+      this.wormRotation.set(team.id, 0);
+      return;
+    }
+    const normalized = ((index % team.worms.length) + team.worms.length) % team.worms.length;
+    this.wormRotation.set(team.id, normalized);
+  }
+
+  private advanceRotationForTeam(team: Team) {
+    if (team.worms.length === 0) {
+      this.setRotationForTeam(team, 0);
+      return;
+    }
+    const start = this.getRotationForTeam(team);
+    for (let offset = 1; offset <= team.worms.length; offset++) {
+      const idx = (start + offset) % team.worms.length;
+      const worm = team.worms[idx]!;
+      if (worm.alive) {
+        this.setRotationForTeam(team, idx);
+        return;
+      }
+    }
+    // No alive worms found, keep current rotation to avoid churn
+    this.setRotationForTeam(team, start);
+  }
+
+  private findNextAliveTeamIndex(startIndex: number): number | null {
+    if (this.teams.length === 0) return null;
+    for (let offset = 0; offset < this.teams.length; offset++) {
+      const idx = (startIndex + offset) % this.teams.length;
+      const team = this.teams[idx]!;
+      if (team.worms.some((worm) => worm.alive)) {
+        return idx;
+      }
+    }
+    return null;
   }
 
   private spawnTeams(terrain: Terrain) {
